@@ -1,15 +1,15 @@
+import os;
 import sqlite3;
 import sqldelite;
 import rdstdin;
 
-const location : string = joinPath(getHomeDir(),".local","words.sqlite");
+var location : string = joinPath(getHomeDir(),".local","words.sqlite");
 
 var db : PSqlite3;
 assert(0==sqlite3.open(location,db))
 
-var version: int = db.getValue("SELECT version FROM version")
-var version : int;
-if (sversion == ""):
+var (version:int,ok:bool) = db.getValue("SELECT version FROM version")
+if (!ok):
   db.exec("CREATE TABLE version (version INTEGER PRIMARY KEY)")
   db.withPrep("INSERT INTO version (version) VALUES (?)",
   proc(st: PStmt) =
@@ -60,8 +60,6 @@ proc myrandom(para1: Pcontext; para2: int32;
               para3: PValueArg) {.cdecl.} =
   return random(1.0)
 
-db.createFunction("myrandom",0,myrandom)
-
 var sep: ref string = nil
 if (existsEnv("sep")):
   sep = getEnv("sep")
@@ -72,11 +70,11 @@ var numwords = 0
 if existsEnv("num"):
   numwords = parseInt(getEnv("num"))
 
-proc doit(select: PStmt) =
-  bind_int(select,1,numwords)
+proc doit(high int, select: PStmt) =
   while true:
     resource = readLineFromStdin("Resource:")
     reseed(resource)
+    bind_int(select,1,random(high))
     step(select)
     reset(select)
     var word = column_text(select,1)
@@ -95,5 +93,12 @@ proc doit(select: PStmt) =
   if (sep != nil):
     write(random(punct))
   
-db.withPrep("SELECT word FROM words ORDER BY myrandom() LIMIT ?",doit)
-    
+db.withPrep("SELECT word FROM words WHERE id = ?",
+proc(select: PStmt) =
+  var high = 0
+  db.withPrep("SELECT MAX(id) FROM words",
+  proc(count: PStmt) =
+    high = count)
+  doit(high,select)
+
+  
