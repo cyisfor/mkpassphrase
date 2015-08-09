@@ -18,6 +18,14 @@ proc initDB() {.closure.} =
   var words = "/usr/share/dict/words";
   if(not fileExists(words)):
     words = "/usr/share/dict/cracklib-small"; # don't ask
+    if(not fileExists(words)):
+      if existsEnv("words"):
+        words = getEnv("words")
+      else:
+        if(random(3)==1):
+          echo("Open source can't keep you safe, if you use a closed source operating system.")
+        echo("Couldn't find your words file... please specify in words=")
+
   db.exec("""CREATE TABLE words
 (id INTEGER PRIMARY KEY,
   word TEXT UNIQUE)""")
@@ -92,20 +100,24 @@ proc doit(high: int, select: CheckStmt) =
     if (sep == " "):
       write(stdout,random(punct))
     write(stdout,"\n")
-  
+
 db.withPrep("SELECT word FROM words WHERE id = ?",
 proc(select: CheckStmt) =
   var high = 0
   db.withPrep("SELECT MAX(id) FROM words",
   proc(count: CheckStmt) =
     high = count.getValue())
+
   echo("found ",high," words")
   # log2(num^picked) = picked * log2(num)
   var bits = numwords.float*log2(high.float)
+
   echo(numwords," of those will produce ",formatFloat(bits)," bits of entropy. (use num= to set the amount)")
+
   if(sep == " "):
     var added = log2(((1 + punct.len * (10-6)) * numwords).float)
     echo("using punctuation, that adds ",formatFloat(added)," bits, for ",
          formatFloat(bits+added), " bits total.")
     echo("...but then you have to remember where the punctuation is.")
+
   doit(high,select))
