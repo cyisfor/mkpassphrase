@@ -1,64 +1,63 @@
-import os;
-import sqlite3;
-import sqldelite;
-import rdstdin;
+import sqldelite
+
+import sqlite3
+import rdstdin
+import strutils
+import math
+import os
 
 var location : string = joinPath(getHomeDir(),".local","words.sqlite");
 
 var db : PSqlite3;
 assert(0==sqlite3.open(location,db))
 
-var (version:int,ok:bool) = db.getValue("SELECT version FROM version")
-if (!ok):
+var (version,ok) = db.getValue("SELECT version FROM version")
+if (not ok):
   db.exec("CREATE TABLE version (version INTEGER PRIMARY KEY)")
   db.withPrep("INSERT INTO version (version) VALUES (?)",
   proc(st: PStmt) =
-    bind_int(st,1,0))
+    assert(SQLITE_OK==bind_int(st,1,0)))
   version = 0
 
 type Upgrade = tuple
   version: int
   doit: proc ()
 
-proc initDB() =
+proc initDB() {.closure.} =
   var words = "/usr/share/dict/words";
-  if(!fileExists(words)):
+  if(not fileExists(words)):
     words = "/usr/share/dict/cracklib-small"; # don't ask
-  db.exec(sql(r"CREATE TABLE words
+  db.exec("""CREATE TABLE words
 (id INTEGER PRIMARY KEY,
-  word TEXT UNIQUE)"))
+  word TEXT UNIQUE)""")
   for line in lines(words):
-    if (find(line,'\'')): continue
+    if (find(line,'\'')>0): continue
     var word = line.strip(false,true)
     echo "found word", word
 
-const upgrades: Upgrade[] = [(0,initDB)];
+const upgrades: seq[tuple[version: int, doit: proc()]] = @[(version:0,doit:initDB)];
 
 proc doUpgrades(st: PStmt) =
   for upgrade in upgrades:
     if (upgrade.version > version):
       upgrade.doit()
       version = upgrade.version
-      bind_integer(st,1,version)
+      assert(SQLITE_OK==bind_int(st,1.cint,version.cint))
       assert(SQLITE_OK==step(st))
-      reset(st)
+      assert(SQLITE_OK==reset(st))
 db.withPrep("UPDATE version SET version = ?",doUpgrades)
 
-var master = readPasswordFromStdin("Master Passphrase:")
+var master: string = readPasswordFromStdin("Master Passphrase:")
 
 proc stringToInteger(s: string): int =
   var i: int = 0
   for c in s:
-    i = (i | c) << 8;
+    i = (i + c.int) * 0x100;
     return i
     
-proc reseed(newseed: string = "") =
-  newseed += master
-  randomize(stringToInteger(newseed))
-
-proc myrandom(para1: Pcontext; para2: int32; 
-              para3: PValueArg) {.cdecl.} =
-  return random(1.0)
+proc reseed(newseed: string) =
+  var derp = newseed & master
+  randomize(stringToInteger(derp))
 
 var sep: ref string = nil
 if (existsEnv("sep")):

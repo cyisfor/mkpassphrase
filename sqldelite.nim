@@ -26,9 +26,9 @@ proc getValue*(st: PStmt): int =
     else:
       raise newException(ValueError,"Didn't return a single row.")
 
-proc getValue*(db: PSqlite3, sql: string): int =
+proc getValue*(db: PSqlite3, sql: string): tuple[v: int, ok: bool] =
   var val = 0
   proc setit(st: PStmt) =
     val = st.getValue()  
   withPrep(db,sql,setit)
-  return val 
+  return (val,true)
