@@ -35,7 +35,7 @@ proc initDB() {.closure.} =
     var word = line.strip(false,true)
     echo "found word", word
 
-const upgrades: seq[tuple[version: int, doit: proc()]] = @[(version:0,doit:initDB)];
+const upgrades: seq[Upgrade] = @[(version:0,doit:initDB)];
 
 proc doUpgrades(st: PStmt) =
   for upgrade in upgrades:
@@ -59,7 +59,7 @@ proc reseed(newseed: string) =
   var derp = newseed & master
   randomize(stringToInteger(derp))
 
-var sep: ref string = nil
+var sep: string = ""
 if (existsEnv("sep")):
   sep = getEnv("sep")
 
@@ -69,35 +69,36 @@ var numwords = 0
 if existsEnv("num"):
   numwords = parseInt(getEnv("num"))
 
-proc doit(high int, select: PStmt) =
+proc doit(high: int, select: PStmt) =
+  var first = false
   while true:
-    resource = readLineFromStdin("Resource:")
+    var resource = readLineFromStdin("Resource:")
     reseed(resource)
-    bind_int(select,1,random(high))
-    step(select)
-    reset(select)
+    assert(SQLITE_OK==bind_int(select,1.cint,random(high).cint))
+    assert(SQLITE_OK==step(select))
+    assert(SQLITE_OK==reset(select))
     var word = column_text(select,1)
     if (first):
       first = false
       word[0] = toUpper(word[0])
-    elif (sep == nil):
+    elif (sep == ""):
       word[0] = toUpper(word[0])
     else:
       if (random(10)>6):
         var p = random(punct)
-        write(p)
+        write(stdout,p)
         if (p.len == 2):
           word[0] = toUpper(word[0])
-    write(word)
-  if (sep != nil):
-    write(random(punct))
+    write(stdout,word)
+  if (sep != ""):
+    write(stdout,random(punct))
   
 db.withPrep("SELECT word FROM words WHERE id = ?",
 proc(select: PStmt) =
   var high = 0
   db.withPrep("SELECT MAX(id) FROM words",
   proc(count: PStmt) =
-    high = count)
-  doit(high,select)
+    high = count.getValue())
+  doit(high,select))
 
   
