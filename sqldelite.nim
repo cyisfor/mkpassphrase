@@ -32,16 +32,16 @@ proc Bind*(st: CheckStmt, idx: int, val: string) =
 
 proc step*(st: CheckStmt) =
   st.check(step(st.st))
+  
+proc reset*(st: CheckStmt) =
+  st.check(reset(st.st))
 
 proc get*(st: CheckStmt) =
   var res = step(st.st)
   if(res == SQLITE_DONE):
     st.reset()
-    raise DBError("No results?")
+    raise DBError(msg: "No results?")
   st.check(res)
-
-proc reset*(st: CheckStmt) =
-  st.check(reset(st.st))
 
 proc column*(st: CheckStmt, idx: int): string =
   var res = column_text(st.st,idx.cint)
