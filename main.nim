@@ -1,6 +1,6 @@
 import sqldelite
+from version import upgrades
 
-import sqlite3
 import rdstdin
 import strutils
 import math
@@ -10,24 +10,6 @@ var location : string = joinPath(getHomeDir(),".local","words.sqlite");
 
 var db : CheckDB;
 sqldelite.open(location,db)
-
-var version: int
-try:
-  version = db.getValue("SELECT version FROM version")
-except DBError:
-  echo getCurrentExceptionMsg()
-  try: db.exec("CREATE TABLE version (version INTEGER PRIMARY KEY)")
-  except DBError:
-    echo("Table already exist?")
-  db.withPrep("INSERT INTO version (version) VALUES (?)",
-  proc(st: CheckStmt) =
-    st.Bind(1,0)
-    st.step())
-  version = 0
-
-type Upgrade = tuple
-  version: int
-  doit: proc ()
 
 proc initDB() {.closure.} =
   var words = "/usr/share/dict/words";
@@ -47,18 +29,7 @@ proc initDB() {.closure.} =
                   insert.step()
                   insert.reset())
 
-const upgrades: seq[Upgrade] = @[(version:1,doit:initDB)];
-
-proc doUpgrades(st: CheckStmt) =
-  for upgrade in upgrades:
-    if (upgrade.version > version):
-      upgrade.doit()
-      version = upgrade.version
-      echo("version ",version," done")
-      st.Bind(1,version)
-      st.step()
-      st.reset()
-db.withPrep("UPDATE version SET version = ?",doUpgrades)
+upgrades((version:1,doit:initDB))
 
 echo("Passphrase Maker")
 var master: string = readPasswordFromStdin("Master Passphrase:")
@@ -104,6 +75,11 @@ proc doit(high: int, select: CheckStmt) =
       var word: string = select.column(0)
       if (sep == ""):
         word[0] = toUpper(word[0])
+      elif(sep != " "):
+        if(first):
+          first = false
+        else:
+          write(stdout,sep)
       elif (first):
         first = false
       else:
@@ -115,7 +91,7 @@ proc doit(high: int, select: CheckStmt) =
         write(stdout,sep)
       write(stdout,word)
 
-    if (sep != ""):
+    if (sep == " "):
       write(stdout,random(punct))
     write(stdout,"\n")
   
@@ -129,11 +105,9 @@ proc(select: CheckStmt) =
   # log2(num^picked) = picked * log2(num)
   var bits = numwords.float*log2(high.float)
   echo(numwords," of those will produce ",formatFloat(bits)," bits of entropy. (use num= to set the amount)")
-  if(sep != ""):
+  if(sep == " "):
     var added = log2(((1 + punct.len * (10-6)) * numwords).float)
     echo("using punctuation, that adds ",formatFloat(added)," bits, for ",
          formatFloat(bits+added), " bits total.")
     echo("...but then you have to remember where the punctuation is.")
   doit(high,select))
-
-  
