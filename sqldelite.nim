@@ -9,15 +9,17 @@ type CheckStmt* = tuple
   db: CheckDB
   st: PStmt
   
-type DBError* = object of IOError
+type DBError* = ref object of IOError
   res: cint
+  columns: cint
+  index: int
 
 proc check(db: CheckDB, res: cint) =
   case(res):
     of SQLITE_OK,SQLITE_DONE,SQLITE_ROW:
       return
     else:
-      raise newException(DBError,$db.errmsg())
+      raise DBError(msg: $db.errmsg())
 
 proc check(st: CheckStmt, res: cint) {.inline.} =
   check(st.db,res)
@@ -25,19 +27,32 @@ proc check(st: CheckStmt, res: cint) {.inline.} =
 proc Bind*(st: CheckStmt, idx: int, val: int) =
   st.check(bind_int(st.st,idx.cint,val.cint))
 
+proc Bind*(st: CheckStmt, idx: int, val: string) =
+  st.check(bind_text(st.st,idx.cint,val, val.len.cint, nil))
+
 proc step*(st: CheckStmt) =
   st.check(step(st.st))
+
+proc get*(st: CheckStmt) =
+  var res = step(st.st)
+  if(res == SQLITE_DONE):
+    st.reset()
+    raise DBError("No results?")
+  st.check(res)
 
 proc reset*(st: CheckStmt) =
   st.check(reset(st.st))
 
 proc column*(st: CheckStmt, idx: int): string =
-  return $column_text(st.st,idx.cint)
+  var res = column_text(st.st,idx.cint)
+  if(res == nil):
+    raise DBError(msg: "No column at index $1" % [$idx], index: idx, columns: column_count(st.st))
+  return $res
   
 proc open*(location: string, db: var CheckDB) =
   var res = sqlite3.open(location,db.PSqlite3)
   if (res != SQLITE_OK):
-    raise newException(DBError,"Could not open")
+    raise DBError(msg: "Could not open")
 
 proc withPrep*(db: CheckDB, sql: string, actions: proc(st: CheckStmt)) =
   var st: CheckStmt
@@ -48,6 +63,21 @@ proc withPrep*(db: CheckDB, sql: string, actions: proc(st: CheckStmt)) =
   finally:
     db.check(finalize(st.st))
 
+template withTransaction*(db: expr, actions: stmt) =
+  db.withPrep("BEGIN",
+  proc(begin: CheckStmt) =
+    db.withPrep("ROLLBACK",
+    proc(rollback: CheckStmt) =
+      db.withPrep("COMMIT",
+      proc(commit: CheckStmt) =
+        begin.step()
+        try:
+          actions
+          commit.step()
+        except:
+          rollback.step()
+          raise)))
+    
 proc exec*(db: CheckDB, sql: string) =
   withPrep(db,sql,proc(st: CheckStmt) =
             db.check(step(st.st)))

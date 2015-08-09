@@ -16,10 +16,13 @@ try:
   version = db.getValue("SELECT version FROM version")
 except DBError:
   echo getCurrentExceptionMsg()
-  db.exec("CREATE TABLE version (version INTEGER PRIMARY KEY)")
+  try: db.exec("CREATE TABLE version (version INTEGER PRIMARY KEY)")
+  except DBError:
+    echo("Table already exist?")
   db.withPrep("INSERT INTO version (version) VALUES (?)",
   proc(st: CheckStmt) =
-    st.Bind(1,0))
+    st.Bind(1,0)
+    st.step())
   version = 0
 
 type Upgrade = tuple
@@ -33,18 +36,25 @@ proc initDB() {.closure.} =
   db.exec("""CREATE TABLE words
 (id INTEGER PRIMARY KEY,
   word TEXT UNIQUE)""")
-  for line in lines(words):
-    if (find(line,'\'')>0): continue
-    var word = line.strip(false,true)
-    echo "found word", word
+  withTransaction(db):
+    db.withPrep("INSERT INTO words (word) VALUES (?)",
+              proc(insert: CheckStmt) =
+                for line in lines(words):
+                  if (find(line,'\'')>0): continue
+                  var word = line.strip(false,true)
+                  echo "found word ", word
+                  insert.Bind(1,word)
+                  insert.step()
+                  insert.reset())
 
-const upgrades: seq[Upgrade] = @[(version:0,doit:initDB)];
+const upgrades: seq[Upgrade] = @[(version:1,doit:initDB)];
 
 proc doUpgrades(st: CheckStmt) =
   for upgrade in upgrades:
     if (upgrade.version > version):
       upgrade.doit()
       version = upgrade.version
+      echo("version ",version," done")
       st.Bind(1,version)
       st.step()
       st.reset()
@@ -102,6 +112,7 @@ proc(select: CheckStmt) =
   db.withPrep("SELECT MAX(id) FROM words",
   proc(count: CheckStmt) =
     high = count.getValue())
+  echo("found ",high," words")
   doit(high,select))
 
   
