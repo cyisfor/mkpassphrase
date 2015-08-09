@@ -9,16 +9,17 @@ import os
 var location : string = joinPath(getHomeDir(),".local","words.sqlite");
 
 var db : CheckDB;
-assert(0==sqldelite.open(location,db))
+sqldelite.open(location,db)
 
 var version: int
 try:
   version = db.getValue("SELECT version FROM version")
 except DBError:
+  echo getCurrentExceptionMsg()
   db.exec("CREATE TABLE version (version INTEGER PRIMARY KEY)")
   db.withPrep("INSERT INTO version (version) VALUES (?)",
   proc(st: CheckStmt) =
-    assert(SQLITE_OK==bind_int(st,1,0)))
+    st.Bind(1,0))
   version = 0
 
 type Upgrade = tuple
@@ -39,14 +40,14 @@ proc initDB() {.closure.} =
 
 const upgrades: seq[Upgrade] = @[(version:0,doit:initDB)];
 
-proc doUpgrades(st: PStmt) =
+proc doUpgrades(st: CheckStmt) =
   for upgrade in upgrades:
     if (upgrade.version > version):
       upgrade.doit()
       version = upgrade.version
-      assert(SQLITE_OK==bind_int(st,1.cint,version.cint))
-      assert(SQLITE_OK==step(st))
-      assert(SQLITE_OK==reset(st))
+      st.Bind(1,version)
+      st.step()
+      st.reset()
 db.withPrep("UPDATE version SET version = ?",doUpgrades)
 
 var master: string = readPasswordFromStdin("Master Passphrase:")
@@ -71,15 +72,15 @@ var numwords = 0
 if existsEnv("num"):
   numwords = parseInt(getEnv("num"))
 
-proc doit(high: int, select: PStmt) =
+proc doit(high: int, select: CheckStmt) =
   var first = false
   while true:
     var resource = readLineFromStdin("Resource:")
     reseed(resource)
-    assert(SQLITE_OK==bind_int(select,1.cint,random(high).cint))
-    assert(SQLITE_OK==step(select))
-    assert(SQLITE_OK==reset(select))
-    var word = column_text(select,1)
+    select.Bind(1,random(high))
+    select.step()
+    select.reset()
+    var word: string = select.column(1)
     if (first):
       first = false
       word[0] = toUpper(word[0])
@@ -96,10 +97,10 @@ proc doit(high: int, select: PStmt) =
     write(stdout,random(punct))
   
 db.withPrep("SELECT word FROM words WHERE id = ?",
-proc(select: PStmt) =
+proc(select: CheckStmt) =
   var high = 0
   db.withPrep("SELECT MAX(id) FROM words",
-  proc(count: PStmt) =
+  proc(count: CheckStmt) =
     high = count.getValue())
   doit(high,select))
 

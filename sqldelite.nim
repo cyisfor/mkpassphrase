@@ -1,4 +1,5 @@
 import sqlite3
+import strutils
 
 #proc createFunction*(c: PSqlite3, name: string, nArg: int, fnc: Tcreate_function_func_func) =
 #  create_function(c,name,nArg,SQLITE_UTF8,nil,fnc,nil,nil);
@@ -9,6 +10,7 @@ type CheckStmt* = tuple
   st: PStmt
   
 type DBError* = object of IOError
+  res: cint
 
 proc check(db: CheckDB, res: cint) =
   case(res):
@@ -17,7 +19,22 @@ proc check(db: CheckDB, res: cint) =
     else:
       raise newException(DBError,$db.errmsg())
 
-proc open(location: string, db: var CheckDB) =
+proc check(st: CheckStmt, res: cint) {.inline.} =
+  check(st.db,res)
+      
+proc Bind*(st: CheckStmt, idx: int, val: int) =
+  st.check(bind_int(st.st,idx.cint,val.cint))
+
+proc step*(st: CheckStmt) =
+  st.check(step(st.st))
+
+proc reset*(st: CheckStmt) =
+  st.check(reset(st.st))
+
+proc column*(st: CheckStmt, idx: int): string =
+  return $column_text(st.st,idx.cint)
+  
+proc open*(location: string, db: var CheckDB) =
   var res = sqlite3.open(location,db.PSqlite3)
   if (res != SQLITE_OK):
     raise newException(DBError,"Could not open")
@@ -38,11 +55,12 @@ proc exec*(db: CheckDB, sql: string) =
 proc getValue*(st: CheckStmt): int =
   assert(1==column_count(st.st))
   defer: st.db.check(reset(st.st))
-  case step(st.st):
+  var res = step(st.st)
+  case res:
     of SQLITE_ROW:
       return column_int(st.st,0);
     else:
-      raise newException(DBError,"Didn't return a single row.")
+      raise DBError(msg:"Didn't return a single row",res:res)
 
 proc getValue*(db: CheckDB, sql: string): int =
   var val = 0
