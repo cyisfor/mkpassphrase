@@ -6,10 +6,13 @@ import strutils
 import math
 import os
 
-var location : string = joinPath(getHomeDir(),".local","words.sqlite");
+var location : string = joinPath(getHomeDir(),".local")
+
+if not dirExists(location):
+  createDir(location)
 
 var db : CheckDB;
-sqldelite.open(location,db)
+sqldelite.open(joinPath(location,"passphrase.sqlite"),db)
 
 proc initDB() {.closure.} =
   var words = "/usr/share/dict/words";
@@ -29,7 +32,7 @@ proc initDB() {.closure.} =
                   insert.step()
                   insert.reset())
 
-upgrades((version:1,doit:initDB))
+db.upgrades((1,initDB))
 
 echo("Passphrase Maker")
 var master: string = readPasswordFromStdin("Master Passphrase:")
@@ -37,20 +40,15 @@ var master: string = readPasswordFromStdin("Master Passphrase:")
 proc stringToInteger(s: string): int =
   var i: int = 0
   for c in s:
-    #echo("doing ",i," ",c,"=",c.int)
     i = (i shl 8) or c.int;
   return i
 
-#proc hexlen(x: BiggestInt): int =
-#  return (ln(x.float) / ln(0x10) + 1).int  
-    
 proc reseed(newseed: string) =
   if (newseed == ""):
     randomize()
     return
   var derp = newseed & master
   var i = stringToInteger(derp)
-  #echo("New seed: ",derp,"->",i,'/',toHex(abs(i),hexlen(abs(i))))
   randomize(i)
 
 var sep: string = ""

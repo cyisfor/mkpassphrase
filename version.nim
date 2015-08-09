@@ -4,7 +4,7 @@ type Upgrade* = tuple
   version: int
   doit: proc ()
 
-proc upgrades*(db: CheckDB, upgrades: varargs[Upgrade]):
+proc upgrades*(db: CheckDB, upgrades: varargs[Upgrade]) =
   var version: int
   try:
     version = db.getValue("SELECT version FROM version")
@@ -18,8 +18,13 @@ proc upgrades*(db: CheckDB, upgrades: varargs[Upgrade]):
                   st.step())
     version = 0
 
-  proc doUpgrades(st: CheckStmt):
-    for upgrade in upgrades:
+  # nested functions using a varargs is "illegal" -_-
+  var nimsux: seq[Upgrade] = newSeq[Upgrade](upgrades.len)
+  for i in countup(0,upgrades.len-1):
+    nimsux[i] = upgrades[i]
+
+  proc doUpgrades(st: CheckStmt) =
+    for upgrade in nimsux:
       if (upgrade.version > version):
         upgrade.doit()
         version = upgrade.version
