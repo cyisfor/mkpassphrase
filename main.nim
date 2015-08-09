@@ -8,14 +8,16 @@ import os
 
 var location : string = joinPath(getHomeDir(),".local","words.sqlite");
 
-var db : PSqlite3;
-assert(0==sqlite3.open(location,db))
+var db : CheckDB;
+assert(0==sqldelite.open(location,db))
 
-var (version,ok) = db.getValue("SELECT version FROM version")
-if (not ok):
+var version: int
+try:
+  version = db.getValue("SELECT version FROM version")
+except DBError:
   db.exec("CREATE TABLE version (version INTEGER PRIMARY KEY)")
   db.withPrep("INSERT INTO version (version) VALUES (?)",
-  proc(st: PStmt) =
+  proc(st: CheckStmt) =
     assert(SQLITE_OK==bind_int(st,1,0)))
   version = 0
 
