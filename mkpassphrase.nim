@@ -30,15 +30,14 @@ proc initDB() {.closure.} =
 (id INTEGER PRIMARY KEY,
   word TEXT UNIQUE)""")
   withTransaction(db):
-    db.withPrep("INSERT INTO words (word) VALUES (?)",
-              proc(insert: CheckStmt) =
-                for line in lines(words):
-                  if (find(line,'\'')>0): continue
-                  var word = line.strip(false,true)
-                  echo "found word ", word
-                  insert.Bind(1,word)
-                  insert.step()
-                  insert.reset())
+    db.withPrep("INSERT INTO words (word) VALUES (?)") do (insert: CheckStmt):
+      for line in lines(words):
+        if (find(line,'\'')>0): continue
+        var word = line.strip(false,true)
+        echo "found word ", word
+        insert.Bind(1,word)
+        insert.step()
+        insert.reset()
 
 db.upgrades((1,initDB))
 
@@ -101,12 +100,10 @@ proc doit(high: int, select: CheckStmt) =
       write(stdout,random(punct))
     write(stdout,"\n")
 
-db.withPrep("SELECT word FROM words WHERE id = ?",
-proc(select: CheckStmt) =
+db.withPrep("SELECT word FROM words WHERE id = ?") do (select: CheckStmt):
   var high = 0
-  db.withPrep("SELECT MAX(id) FROM words",
-  proc(count: CheckStmt) =
-    high = count.getValue())
+  db.withPrep("SELECT MAX(id) FROM words") do(count: CheckStmt):
+    high = count.getValue()
 
   echo("found ",high," words")
   # log2(num^picked) = picked * log2(num)
@@ -120,4 +117,4 @@ proc(select: CheckStmt) =
          formatFloat(bits+added), " bits total.")
     echo("...but then you have to remember where the punctuation is.")
 
-  doit(high,select))
+  doit(high,select)

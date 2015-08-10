@@ -12,10 +12,9 @@ proc upgrades*(db: CheckDB, upgrades: varargs[Upgrade]) =
     try: db.exec("CREATE TABLE version (version INTEGER PRIMARY KEY)")
     except DBError:
       echo("Table already exist?")
-    db.withPrep("INSERT INTO version (version) VALUES (?)",
-                proc(st: CheckStmt) =
-                  st.Bind(1,0)
-                  st.step())
+    db.withPrep("INSERT INTO version (version) VALUES (?)") do (st: CheckStmt):
+      st.Bind(1,0)
+      st.step()
     version = 0
 
   # nested functions using a varargs is "illegal" -_-
@@ -23,7 +22,7 @@ proc upgrades*(db: CheckDB, upgrades: varargs[Upgrade]) =
   for i in countup(0,upgrades.len-1):
     nimsux[i] = upgrades[i]
 
-  proc doUpgrades(st: CheckStmt) =
+  db.withPrep("UPDATE version SET version = ?") do (st: CheckStmt):
     for upgrade in nimsux:
       if (upgrade.version > version):
         upgrade.doit()
@@ -32,6 +31,3 @@ proc upgrades*(db: CheckDB, upgrades: varargs[Upgrade]) =
         st.Bind(1,version)
         st.step()
         st.reset()
-  db.withPrep("UPDATE version SET version = ?",doUpgrades)
-
-

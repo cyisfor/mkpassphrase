@@ -8,7 +8,7 @@ type CheckDB* = PSqlite3
 type CheckStmt* = tuple
   db: CheckDB
   st: PStmt
-  
+
 type DBError* = ref object of IOError
   res: cint
   columns: cint
@@ -23,7 +23,7 @@ proc check(db: CheckDB, res: cint) =
 
 proc check(st: CheckStmt, res: cint) {.inline.} =
   check(st.db,res)
-      
+
 proc Bind*(st: CheckStmt, idx: int, val: int) =
   st.check(bind_int(st.st,idx.cint,val.cint))
 
@@ -32,7 +32,7 @@ proc Bind*(st: CheckStmt, idx: int, val: string) =
 
 proc step*(st: CheckStmt) =
   st.check(step(st.st))
-  
+
 proc reset*(st: CheckStmt) =
   st.check(reset(st.st))
 
@@ -48,7 +48,7 @@ proc column*(st: CheckStmt, idx: int): string =
   if(res == nil):
     raise DBError(msg: "No column at index $1" % [$idx], index: idx, columns: column_count(st.st))
   return $res
-  
+
 proc open*(location: string, db: var CheckDB) =
   var res = sqlite3.open(location,db.PSqlite3)
   if (res != SQLITE_OK):
@@ -64,24 +64,21 @@ proc withPrep*(db: CheckDB, sql: string, actions: proc(st: CheckStmt)) =
     db.check(finalize(st.st))
 
 template withTransaction*(db: expr, actions: stmt) =
-  db.withPrep("BEGIN",
-  proc(begin: CheckStmt) =
-    db.withPrep("ROLLBACK",
-    proc(rollback: CheckStmt) =
-      db.withPrep("COMMIT",
-      proc(commit: CheckStmt) =
+  db.withPrep("BEGIN") do (begin: CheckStmt):
+    db.withPrep("ROLLBACK") do (rollback: CheckStmt):
+      db.withPrep("COMMIT") do (commit: CheckStmt):
         begin.step()
         try:
           actions
           commit.step()
         except:
           rollback.step()
-          raise)))
-    
+          raise
+
 proc exec*(db: CheckDB, sql: string) =
-  withPrep(db,sql,proc(st: CheckStmt) =
-            db.check(step(st.st)))
-      
+  withPrep(db,sql) do (st: CheckStmt):
+    db.check(step(st.st))
+
 proc getValue*(st: CheckStmt): int =
   assert(1==column_count(st.st))
   defer: st.db.check(reset(st.st))
@@ -94,7 +91,7 @@ proc getValue*(st: CheckStmt): int =
 
 proc getValue*(db: CheckDB, sql: string): int =
   var val = 0
-  proc setit(st: CheckStmt) =
-    val = st.getValue()  
-  withPrep(db,sql,setit)
+  withPrep(db,sql) do (st: CheckStmt):
+    val = st.getValue()
+
   return val
